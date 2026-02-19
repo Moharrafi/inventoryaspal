@@ -188,8 +188,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
     };
   };
 
-  const revenueTrend = calculateTrend(currentMonthStats.revenue, prevMonthStats.revenue);
-  const profitTrend = calculateTrend(currentMonthStats.profit, prevMonthStats.profit);
+  const revenueTrend = calculateTrend(currentMonthStats?.revenue || 0, prevMonthStats?.revenue || 0);
+  const profitTrend = calculateTrend(currentMonthStats?.profit || 0, prevMonthStats?.profit || 0);
 
   // Stock Distribution Data (By Category)
   const stockByCategory = products.reduce((acc, product) => {
@@ -200,7 +200,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
 
   const stockData = Object.entries(stockByCategory)
     .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => Number(b.value) - Number(a.value));
 
   const totalStock = stockData.reduce((a, b) => a + Number(b.value), 0);
 

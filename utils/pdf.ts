@@ -95,7 +95,7 @@ export const generateReportPDF = ({ title, subtitle, columns, data, filename, ac
         },
         didDrawPage: (data) => {
             // Footer
-            const pageCount = doc.internal.getNumberOfPages();
+            const pageCount = (doc as any).internal.getNumberOfPages();
             const pageSize = doc.internal.pageSize;
             const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
 
