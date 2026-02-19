@@ -96,6 +96,12 @@ export const Inventory: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    const showNotification = (message: string, type: 'success' | 'error') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 3000);
+    };
 
     useEffect(() => {
         fetchData();
@@ -214,9 +220,10 @@ export const Inventory: React.FC = () => {
             setIsModalOpen(false);
             setFormData(initialFormState);
             setEditingTxId(null);
+            showNotification('Transaction saved successfully', 'success');
         } catch (error) {
             console.error('Failed to save transaction:', error);
-            alert('Failed to save transaction');
+            showNotification('Failed to save transaction', 'error');
         }
     };
 
@@ -265,6 +272,17 @@ export const Inventory: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-300 relative">
+            {/* Notification Toast */}
+            {notification && (
+                <div className={`fixed top-4 right-4 z-[70] px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${notification.type === 'success'
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-rose-500 text-white'
+                    }`}>
+                    {notification.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                    <span className="font-medium text-sm">{notification.message}</span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -275,8 +293,8 @@ export const Inventory: React.FC = () => {
                     <button
                         onClick={handleLockClick}
                         className={`flex items-center justify-center p-2 rounded-lg border transition-all ${isLocked
-                                ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-500'
-                                : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400'
+                            ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-500'
+                            : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400'
                             }`}
                         title={isLocked ? "Unlock to Edit" : "Lock Editing"}
                     >

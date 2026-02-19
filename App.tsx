@@ -50,7 +50,11 @@ const Settings = () => (
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme === 'dark';
+  });
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -60,8 +64,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
     }
   }, [isDarkMode]);
 
@@ -71,9 +77,14 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  const confirmLogout = () => {
     localStorage.removeItem('auth_token');
     setIsAuthenticated(false);
     setCurrentPage(Page.DASHBOARD); // Reset page on logout
+    setIsLogoutModalOpen(false);
   };
 
   const NavItem = ({ page, icon: Icon, label }: { page: Page; icon: any; label: string }) => {
@@ -125,7 +136,7 @@ const App: React.FC = () => {
             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
               <Package className="text-slate-900" size={18} />
             </div>
-            <span className="text-lg font-bold tracking-tight text-white">AspalPro</span>
+            <span className="text-lg font-bold tracking-tight text-white">Aspal Inventory</span>
           </div>
 
           <div className="space-y-6">
@@ -192,6 +203,36 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+      {/* Logout Confirmation Modal */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 dark:bg-slate-900 dark:border dark:border-slate-800">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4 dark:bg-rose-900/30">
+                <LogOut className="text-rose-600 dark:text-rose-400" size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2 dark:text-white">Sign Out?</h3>
+              <p className="text-slate-500 text-sm mb-6 dark:text-slate-400">
+                Are you sure you want to sign out of your account? You will need to login again to access the admin panel.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsLogoutModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmLogout}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors shadow-sm shadow-rose-600/20"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,7 +7,11 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+    origin: '*', // Allow all origins for now to ensure Vercel can connect
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Test Connection
@@ -96,7 +100,7 @@ app.get('/api/transactions', async (req, res) => {
 
 // Create Transaction
 app.post('/api/transactions', async (req, res) => {
-    const conn = await db.promise().getConnection();
+    const conn = await db.pool.getConnection();
     try {
         await conn.beginTransaction();
 
@@ -137,7 +141,7 @@ app.post('/api/transactions', async (req, res) => {
 
 // Update Transaction
 app.put('/api/transactions/:id', async (req, res) => {
-    const conn = await db.promise().getConnection();
+    const conn = await db.pool.getConnection();
     try {
         await conn.beginTransaction();
 
@@ -336,6 +340,10 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+if (require.main === module) {
+    app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+    });
+}
+
+module.exports = app;

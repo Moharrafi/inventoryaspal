@@ -4,14 +4,15 @@ import {
     AreaChart, Area
 } from 'recharts';
 import { api } from '../services/api';
+import { formatCurrency } from '../utils/format';
 import { Product, Transaction } from '../types';
 import { Download, Printer, Calendar, TrendingUp, DollarSign, Percent, ArrowUpRight, TrendingDown, Activity, ChevronDown, FileText, Package, Loader2 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { generateReportPDF } from '../utils/pdf';
 
 export const Reports: React.FC = () => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -92,36 +93,18 @@ export const Reports: React.FC = () => {
     // Find month with highest profit
     const maxProfitMonth = [...monthlyData].sort((a, b) => b.profit - a.profit)[0];
 
-    const downloadReport = (type: 'FINANCIAL' | 'INVENTORY' | 'TRANSACTIONS') => {
-        const doc = new jsPDF();
-
-        // Add Company Brand
-        doc.setFontSize(22);
-        doc.setTextColor(15, 23, 42); // Slate 900
-        doc.text("AspalPro Admin", 14, 20);
-
-        doc.setFontSize(10);
-        doc.setTextColor(100, 116, 139); // Slate 500
-        doc.text("Aspal Emulsion Waterproofing Management System", 14, 26);
-
-        // Line separator
-        doc.setDrawColor(226, 232, 240);
-        doc.line(14, 32, 196, 32);
-
-        // Report Meta
-        doc.setFontSize(14);
-        doc.setTextColor(15, 23, 42);
-
+    const downloadReport = (type: 'FINANCIAL' | 'INVENTORY' | 'TRANSACTIONS', action: 'save' | 'print' = 'save') => {
         let title = "";
-        let head: string[][] = [];
-        let body: (string | number)[][] = [];
+        let subtitle = "";
+        let columns: string[] = [];
+        let data: (string | number)[][] = [];
 
         if (type === 'FINANCIAL') {
-            title = `Financial Report - Fiscal Year ${selectedYear}`;
-            head = [['Month', 'Year', 'Orders', 'Revenue', 'Cost', 'Profit', 'Margin']];
-            body = monthlyData.map(d => [
+            title = "Financial Performance Report";
+            subtitle = `Fiscal Year ${selectedYear} - Comprehensive Revenue & Profit Analysis`;
+            columns = ['Month', 'Orders', 'Revenue', 'Cost', 'Profit', 'Margin'];
+            data = monthlyData.map(d => [
                 d.name,
-                selectedYear,
                 d.orders,
                 `Rp ${d.revenue.toLocaleString('id-ID')}`,
                 `Rp ${(d.revenue - d.profit).toLocaleString('id-ID')}`,
@@ -129,9 +112,10 @@ export const Reports: React.FC = () => {
                 `${d.revenue > 0 ? ((d.profit / d.revenue) * 100).toFixed(1) : '0.0'}%`
             ]);
         } else if (type === 'INVENTORY') {
-            title = "Inventory Stock Report";
-            head = [['Product Name', 'Category', 'SKU', 'Stock', 'Status', 'Valuation']];
-            body = products.map(p => [
+            title = "Inventory Valuation Report";
+            subtitle = `Current Stock Levels & Status - ${new Date().toLocaleDateString()}`;
+            columns = ['Product Name', 'Category', 'SKU', 'Stock', 'Status', 'Valuation'];
+            data = products.map(p => [
                 p.name,
                 p.category,
                 p.sku,
@@ -140,15 +124,16 @@ export const Reports: React.FC = () => {
                 `Rp ${(p.stock * p.price).toLocaleString('id-ID')}`
             ]);
         } else if (type === 'TRANSACTIONS') {
-            title = `Transaction History Log (${selectedYear})`;
-            head = [['Date', 'Type', 'Product', 'Qty', 'Total Value', 'Status']];
-            // Filter transactions for the selected year and sort by date descending
+            title = "Transaction Log";
+            subtitle = `Inbound & Outbound History - Fiscal Year ${selectedYear}`;
+            columns = ['Date', 'Type', 'Product', 'Qty', 'Total Value', 'Status'];
+
             const yearTransactions = transactions
                 .filter(t => new Date(t.date).getFullYear().toString() === selectedYear)
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-            body = yearTransactions.map(t => [
-                t.date,
+            data = yearTransactions.map(t => [
+                new Date(t.date).toLocaleDateString('id-ID'),
                 t.type === 'IN' ? 'INBOUND' : 'OUTBOUND',
                 t.productName,
                 t.type === 'IN' ? `+${t.quantity}` : `-${t.quantity}`,
@@ -157,45 +142,15 @@ export const Reports: React.FC = () => {
             ]);
         }
 
-        doc.text(title, 14, 45);
-        doc.setFontSize(10);
-        doc.setTextColor(100);
-        doc.text(`Generated on: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`, 14, 51);
-
-        autoTable(doc, {
-            head: head,
-            body: body,
-            startY: 60,
-            theme: 'grid',
-            styles: {
-                fontSize: 9,
-                cellPadding: 3,
-                textColor: [51, 65, 85]
-            },
-            headStyles: {
-                fillColor: [15, 23, 42],
-                textColor: [255, 255, 255],
-                fontStyle: 'bold'
-            },
-            alternateRowStyles: {
-                fillColor: [248, 250, 252]
-            },
-            columnStyles: {
-                0: { fontStyle: 'bold' } // First column bold
-            }
+        generateReportPDF({
+            title,
+            subtitle,
+            columns,
+            data,
+            filename: `${type.toLowerCase()}_report_${selectedYear}`,
+            action
         });
 
-        // Footer
-        const pageCount = (doc as any).internal.getNumberOfPages();
-        for (let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            doc.setFontSize(8);
-            doc.setTextColor(150);
-            doc.text(`Page ${i} of ${pageCount}`, 196, 285, { align: 'right' });
-            doc.text('Confidential - For Internal Use Only', 14, 285);
-        }
-
-        doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
         setIsExportMenuOpen(false);
     };
 
@@ -238,18 +193,45 @@ export const Reports: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm dark:bg-slate-900 dark:border-slate-700">
-                        <Calendar size={16} className="text-slate-400 mr-2" />
-                        <select
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(e.target.value)}
-                            className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none dark:text-slate-200"
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsYearDropdownOpen(!isYearDropdownOpen)}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-colors dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
                         >
-                            <option value="2026">Fiscal Year 2026</option>
-                            <option value="2025">Fiscal Year 2025</option>
-                            <option value="2024">Fiscal Year 2024</option>
-                            <option value="2023">Fiscal Year 2023</option>
-                        </select>
+                            <Calendar size={16} className="text-slate-400" />
+                            <span className="text-sm font-semibold">Fiscal Year {selectedYear}</span>
+                            <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isYearDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isYearDropdownOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-30"
+                                    onClick={() => setIsYearDropdownOpen(false)}
+                                />
+                                <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-40 animate-in fade-in zoom-in-95 duration-200 dark:bg-slate-800 dark:border-slate-700">
+                                    {[2026, 2025, 2024, 2023].map((year) => (
+                                        <button
+                                            key={year}
+                                            onClick={() => {
+                                                setSelectedYear(year.toString());
+                                                setIsYearDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between transition-colors
+                                                ${selectedYear === year.toString()
+                                                    ? 'bg-indigo-50 text-indigo-600 font-medium dark:bg-indigo-900/30 dark:text-indigo-400'
+                                                    : 'text-slate-700 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-slate-700/50'
+                                                }`}
+                                        >
+                                            <span>Fiscal Year {year}</span>
+                                            {selectedYear === year.toString() && (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Export Menu Dropdown */}
@@ -307,7 +289,11 @@ export const Reports: React.FC = () => {
                         />
                     )}
 
-                    <button className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
+                    <button
+                        onClick={() => downloadReport('FINANCIAL', 'print')}
+                        className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                        title="Print Financial Report"
+                    >
                         <Printer size={18} />
                     </button>
                 </div>
@@ -324,7 +310,7 @@ export const Reports: React.FC = () => {
                         {/* <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">+12.5%</span> */}
                     </div>
                     <p className="text-indigo-100 text-sm font-medium">Total Revenue</p>
-                    <h3 className="text-2xl font-bold mt-1">Rp {(totalRevenue / 1000000000).toFixed(2)}B</h3>
+                    <h3 className="text-2xl font-bold mt-1">{formatCurrency(totalRevenue)}</h3>
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm dark:bg-slate-900 dark:border-slate-800">
@@ -334,7 +320,7 @@ export const Reports: React.FC = () => {
                         </div>
                     </div>
                     <p className="text-slate-500 text-sm font-medium dark:text-slate-400">Net Profit</p>
-                    <h3 className="text-2xl font-bold text-slate-900 mt-1 dark:text-white">Rp {(totalProfit / 1000000000).toFixed(2)}B</h3>
+                    <h3 className="text-2xl font-bold text-slate-900 mt-1 dark:text-white">{formatCurrency(totalProfit)}</h3>
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm dark:bg-slate-900 dark:border-slate-800">
@@ -344,7 +330,7 @@ export const Reports: React.FC = () => {
                         </div>
                     </div>
                     <p className="text-slate-500 text-sm font-medium dark:text-slate-400">Total Operational Cost</p>
-                    <h3 className="text-2xl font-bold text-slate-900 mt-1 dark:text-white">Rp {(totalCost / 1000000000).toFixed(2)}B</h3>
+                    <h3 className="text-2xl font-bold text-slate-900 mt-1 dark:text-white">{formatCurrency(totalCost)}</h3>
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm dark:bg-slate-900 dark:border-slate-800">
@@ -451,7 +437,7 @@ export const Reports: React.FC = () => {
                     </div>
                     <div className="mt-2 text-center">
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Best performing month: <span className="font-bold text-emerald-600 dark:text-emerald-400">{maxProfitMonth?.name || '-'}</span> with <span className="font-bold text-slate-800 dark:text-white">Rp {maxProfitMonth?.profit.toLocaleString() || 0}</span> profit.
+                            Best performing month: <span className="font-bold text-emerald-600 dark:text-emerald-400">{maxProfitMonth?.name || '-'}</span> with <span className="font-bold text-slate-800 dark:text-white">{formatCurrency(maxProfitMonth?.profit || 0)}</span> profit.
                         </p>
                     </div>
                 </div>

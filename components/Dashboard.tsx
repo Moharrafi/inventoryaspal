@@ -47,7 +47,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               </div>
               <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
                 {entry.name === 'Profit'
-                  ? `Rp ${entry.value.toLocaleString()}`
+                  ? formatCurrency(entry.value)
                   : `${entry.value.toLocaleString()} units`}
               </span>
             </div>
