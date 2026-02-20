@@ -272,14 +272,30 @@ export const Inventory: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-300 relative">
-            {/* Notification Toast */}
+            {/* Notification Toast - Top Center Elegant Style */}
             {notification && (
-                <div className={`fixed top-4 right-4 z-[70] px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${notification.type === 'success'
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-rose-500 text-white'
+                <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl border bg-white dark:bg-slate-900 animate-in slide-in-from-top-5 fade-in duration-300 ${notification.type === 'success' ? 'border-emerald-100 dark:border-emerald-900/30' : 'border-rose-100 dark:border-rose-900/30'
                     }`}>
-                    {notification.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                    <span className="font-medium text-sm">{notification.message}</span>
+                    <div className={`p-2 rounded-full ${notification.type === 'success' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'}`}>
+                        {notification.type === 'success' ? <CheckCircle size={20} strokeWidth={2.5} /> : <AlertCircle size={20} strokeWidth={2.5} />}
+                    </div>
+                    <div className="flex flex-col">
+                        <p className="text-sm font-bold text-slate-800 dark:text-white">{notification.type === 'success' ? 'Success' : 'Error'}</p>
+                        <p className="text-xs text-slate-500 font-medium dark:text-slate-400">{notification.message}</p>
+                    </div>
+                    <button onClick={() => setNotification(null)} className="ml-4 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 rounded-full transition-colors">
+                        <X size={16} />
+                    </button>
+
+                    {/* Progress Bar */}
+                    <div className={`absolute bottom-0 left-0 h-1 rounded-b-xl transition-all duration-[3000ms] ease-linear w-full ${notification.type === 'success' ? 'bg-emerald-500/30' : 'bg-rose-500/30'
+                        }`} style={{ width: '0%', animation: 'shrink 3s linear forwards' }} />
+                    <style>{`
+                        @keyframes shrink {
+                            from { width: 100%; }
+                            to { width: 0%; }
+                        }
+                     `}</style>
                 </div>
             )}
 
