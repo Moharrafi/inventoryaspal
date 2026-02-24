@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Filter, Edit2, Trash2, X, Save, AlertTriangle, CheckCircle, Wand2, AlertCircle, LayoutGrid, List, MoreHorizontal, Loader2 } from 'lucide-react';
 import { Product } from '../types';
 import { api } from '../services/api';
@@ -59,10 +59,13 @@ export const Products: React.FC = () => {
     const [formData, setFormData] = useState<any>(initialFormState);
 
     // Filter Logic
-    const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredProducts = useMemo(() => {
+        const term = searchTerm.toLowerCase();
+        return products.filter(p =>
+            p.name.toLowerCase().includes(term) ||
+            p.sku.toLowerCase().includes(term)
+        );
+    }, [products, searchTerm]);
 
 
 

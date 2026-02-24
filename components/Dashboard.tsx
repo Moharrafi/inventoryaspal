@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -84,6 +84,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
         setProducts(prodData);
         setTransactions(transData);
 
+        // Prepare product lookup to optimize calculations O(1) instead of O(N)
+        const pMap: Record<string, Product> = {};
+        prodData.forEach(p => { pMap[p.id] = p; });
+
         // Calculate Monthly Sales Data from Transactions
         const currentYear = new Date().getFullYear();
         const monthlyData = MONTHS.map((month, index) => {
@@ -95,24 +99,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
               tDate.getFullYear() === currentYear;
           });
 
-          const orders = monthTransactions.reduce((acc, t) => acc + Number(t.quantity), 0);
+          let orders = 0;
+          let revenue = 0;
+          let profit = 0;
 
-          // Calculate revenue: quantity * price 
-          // Note: Transaction doesn't store price snapshot, so we lookup current product price.
-          // In a real app, transaction should store the price at time of sale.
-          const revenue = monthTransactions.reduce((acc, t) => {
-            const product = prodData.find(p => String(p.id) === String(t.productId));
-            return acc + (Number(t.quantity) * (product ? Number(product.price) : 0));
-          }, 0);
-
-          // Profit approximation: revenue - (quantity * cost)
-          const profit = monthTransactions.reduce((acc, t) => {
-            const product = prodData.find(p => String(p.id) === String(t.productId));
-            if (!product) return acc;
-            const saleValue = Number(t.quantity) * Number(product.price);
-            const costValue = Number(t.quantity) * Number(product.cost);
-            return acc + (saleValue - costValue);
-          }, 0);
+          monthTransactions.forEach(t => {
+            const qty = Number(t.quantity);
+            orders += qty;
+            const product = pMap[t.productId];
+            if (product) {
+              const price = Number(product.price);
+              const cost = Number(product.cost);
+              revenue += qty * price;
+              profit += qty * (price - cost);
+            }
+          });
 
           return {
             name: month,
@@ -133,6 +134,165 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
     fetchData();
   }, []);
 
+
+
+  // Product Map for O(1) lookups
+  const productMap = useMemo(() => {
+    const map: Record<string, Product> = {};
+    products.forEach(p => {
+      map[p.id] = p;
+    });
+    return map;
+  }, [products]);
+
+  // General Stats Calculations
+  const { totalRevenue, totalProfit, lowStockCount } = useMemo(() => {
+    const rev = salesData.reduce((acc, curr) => acc + curr.revenue, 0);
+    const prof = salesData.reduce((acc, curr) => acc + curr.profit, 0);
+    const lowStock = products.filter(p => p.stock <= p.minStock).length;
+    return { totalRevenue: rev, totalProfit: prof, lowStockCount: lowStock };
+  }, [salesData, products]);
+
+  // Trend Calculations (Month over Month)
+  const { revenueTrend, profitTrend } = useMemo(() => {
+    const currentDate = new Date();
+    const prevDate = new Date();
+    prevDate.setMonth(currentDate.getMonth() - 1);
+
+    const getMonthlyStats = (targetDate: Date) => {
+      const targetMonth = targetDate.getMonth();
+      const targetYear = targetDate.getFullYear();
+
+      const monthTx = transactions.filter(t => {
+        const tDate = new Date(t.date);
+        return t.type === 'OUT' && tDate.getMonth() === targetMonth && tDate.getFullYear() === targetYear;
+      });
+
+      let revenue = 0;
+      let profit = 0;
+
+      monthTx.forEach(t => {
+        const product = productMap[t.productId];
+        if (product) {
+          const qty = Number(t.quantity);
+          const price = Number(product.price);
+          const cost = Number(product.cost);
+          revenue += qty * price;
+          profit += qty * (price - cost);
+        }
+      });
+
+      return { revenue, profit };
+    };
+
+    const currentMonthStats = getMonthlyStats(currentDate);
+    const prevMonthStats = getMonthlyStats(prevDate);
+
+    const calculateTrend = (current: number, previous: number) => {
+      if (previous === 0) return { direction: 'up', value: '0%' }; // No previous data to compare
+      const diff = current - previous;
+      const percentage = (diff / previous) * 100;
+      return {
+        direction: percentage >= 0 ? 'up' : 'down',
+        value: `${Math.abs(percentage).toFixed(1)}%`
+      };
+    };
+
+    return {
+      revenueTrend: calculateTrend(currentMonthStats.revenue, prevMonthStats.revenue),
+      profitTrend: calculateTrend(currentMonthStats.profit, prevMonthStats.profit)
+    };
+  }, [transactions, productMap]);
+
+  // Stock Distribution Data (By Category)
+  const { stockData, totalStock } = useMemo(() => {
+    const stockByCategory = products.reduce((acc, product) => {
+      const category = product.category || 'Uncategorized';
+      acc[category] = (acc[category] || 0) + Number(product.stock);
+      return acc;
+    }, {} as Record<string, number>);
+
+    const data = Object.entries(stockByCategory)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => Number(b.value) - Number(a.value));
+
+    const total = data.reduce((a, b) => a + Number(b.value), 0);
+    return { stockData: data, totalStock: total };
+  }, [products]);
+
+  // Category Sales Logic for Modal
+  const categorySalesData = useMemo(() => {
+    const categorySalesMap = transactions
+      .filter(t => {
+        if (t.type !== 'OUT') return false;
+        if (selectedCategoryMonth === 'ALL') return true;
+
+        const txDate = new Date(t.date);
+        const txMonth = txDate.toLocaleString('default', { month: 'short' });
+        return txMonth === selectedCategoryMonth;
+      })
+      .reduce((acc: Record<string, number>, curr) => {
+        const product = productMap[curr.productId];
+        if (product) {
+          acc[product.category] = (acc[product.category] || 0) + curr.quantity;
+        }
+        return acc;
+      }, {});
+
+    return Object.keys(categorySalesMap).map(cat => ({
+      name: cat,
+      sales: categorySalesMap[cat]
+    })).sort((a, b) => b.sales - a.sales);
+  }, [transactions, productMap, selectedCategoryMonth]);
+
+  // Product Performance Data (Full List)
+  const productPerformanceData = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const salesByProduct: Record<string, number> = {};
+
+    transactions.forEach(t => {
+      const tDate = new Date(t.date);
+      if (t.type === 'OUT' && tDate.getFullYear() === currentYear) {
+        salesByProduct[t.productId] = (salesByProduct[t.productId] || 0) + Number(t.quantity);
+      }
+    });
+
+    return products
+      .map(product => ({
+        ...product,
+        soldCount: salesByProduct[product.id] || 0
+      }))
+      .sort((a, b) => b.soldCount - a.soldCount);
+  }, [products, transactions]);
+
+  // Detailed Modal Data
+  const { detailedProductSalesData, detailedTotalSales } = useMemo(() => {
+    if (!isCategoryModalOpen) return { detailedProductSalesData: [], detailedTotalSales: 0 };
+
+    const filteredTx = transactions.filter(t => {
+      if (t.type !== 'OUT') return false;
+      if (selectedCategoryMonth === 'ALL') return true;
+      const txDate = new Date(t.date);
+      return txDate.toLocaleString('default', { month: 'short' }) === selectedCategoryMonth;
+    });
+
+    const productSalesMap = filteredTx.reduce((acc: Record<string, number>, curr) => {
+      acc[curr.productId] = (acc[curr.productId] || 0) + curr.quantity;
+      return acc;
+    }, {});
+
+    const totalSales = filteredTx.reduce((acc, curr) => acc + curr.quantity, 0);
+
+    const productSalesData = Object.keys(productSalesMap).map(pid => ({
+      product: productMap[pid],
+      sales: productSalesMap[pid]
+    }))
+      .filter(item => item.product)
+      .sort((a, b) => b.sales - a.sales);
+
+    return { detailedProductSalesData: productSalesData, detailedTotalSales: totalSales };
+  }, [transactions, productMap, selectedCategoryMonth, isCategoryModalOpen]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 animate-in fade-in duration-500">
@@ -141,114 +301,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
       </div>
     );
   }
-
-  // General Stats Calculations
-  const totalRevenue = salesData.reduce((acc, curr) => acc + curr.revenue, 0);
-  const totalProfit = salesData.reduce((acc, curr) => acc + curr.profit, 0);
-  const lowStockCount = products.filter(p => p.stock <= p.minStock).length;
-
-  // Trend Calculations (Month over Month)
-  const getMonthlyStats = (targetDate: Date) => {
-    const targetMonth = targetDate.getMonth();
-    const targetYear = targetDate.getFullYear();
-
-    const monthTx = transactions.filter(t => {
-      const tDate = new Date(t.date);
-      return t.type === 'OUT' && tDate.getMonth() === targetMonth && tDate.getFullYear() === targetYear;
-    });
-
-    const revenue = monthTx.reduce((acc, t) => {
-      const product = products.find(p => String(p.id) === String(t.productId));
-      return acc + (Number(t.quantity) * (product ? Number(product.price) : 0));
-    }, 0);
-
-    const profit = monthTx.reduce((acc, t) => {
-      const product = products.find(p => String(p.id) === String(t.productId));
-      if (!product) return acc;
-      return acc + (Number(t.quantity) * (Number(product.price) - Number(product.cost)));
-    }, 0);
-
-    return { revenue, profit };
-  };
-
-  const currentDate = new Date();
-  const prevDate = new Date();
-  prevDate.setMonth(currentDate.getMonth() - 1);
-
-  const currentMonthStats = getMonthlyStats(currentDate);
-  const prevMonthStats = getMonthlyStats(prevDate);
-
-  const calculateTrend = (current: number, previous: number) => {
-    if (previous === 0) return { direction: 'up', value: '0%' }; // No previous data to compare
-    const diff = current - previous;
-    const percentage = (diff / previous) * 100;
-    return {
-      direction: percentage >= 0 ? 'up' : 'down',
-      value: `${Math.abs(percentage).toFixed(1)}%`
-    };
-  };
-
-  const revenueTrend = calculateTrend(currentMonthStats?.revenue || 0, prevMonthStats?.revenue || 0);
-  const profitTrend = calculateTrend(currentMonthStats?.profit || 0, prevMonthStats?.profit || 0);
-
-  // Stock Distribution Data (By Category)
-  const stockByCategory = products.reduce((acc, product) => {
-    const category = product.category || 'Uncategorized';
-    acc[category] = (acc[category] || 0) + Number(product.stock);
-    return acc;
-  }, {} as Record<string, number>);
-
-  const stockData = Object.entries(stockByCategory)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => Number(b.value) - Number(a.value));
-
-  const totalStock = stockData.reduce((a, b) => a + Number(b.value), 0);
-
-  // Category Sales Logic for Modal
-  // 1. Filter OUT transactions
-  // 2. Filter by Selected Month
-  // 3. Map transaction to product to get category
-  // 4. Aggregate quantity by category
-  const categorySalesMap = transactions
-    .filter(t => {
-      // Must be an OUT transaction
-      if (t.type !== 'OUT') return false;
-
-      // Month Filter Logic
-      if (selectedCategoryMonth === 'ALL') return true;
-
-      const txDate = new Date(t.date);
-      const txMonth = txDate.toLocaleString('default', { month: 'short' }); // e.g., "Oct", "Jan"
-      return txMonth === selectedCategoryMonth;
-    })
-    .reduce((acc: Record<string, number>, curr) => {
-      const product = products.find(p => p.id === curr.productId);
-      if (product) {
-        acc[product.category] = (acc[product.category] || 0) + curr.quantity;
-      }
-      return acc;
-    }, {});
-
-  const categorySalesData = Object.keys(categorySalesMap).map(cat => ({
-    name: cat,
-    sales: categorySalesMap[cat]
-  })).sort((a, b) => b.sales - a.sales);
-
-  // Product Performance Data (Full List)
-  const productPerformanceData = products
-    .map(product => {
-      const currentYear = new Date().getFullYear();
-      const soldCount = transactions
-        .filter(t => {
-          const tDate = new Date(t.date);
-          return t.type === 'OUT' &&
-            (String(t.productId) === String(product.id)) &&
-            tDate.getFullYear() === currentYear;
-        })
-        .reduce((acc, curr) => acc + Number(curr.quantity), 0);
-      return { ...product, soldCount };
-    })
-    .sort((a, b) => b.soldCount - a.soldCount);
 
   return (
     <>
@@ -569,43 +621,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                    {(() => {
-                      // Logic to aggregate sales by PRODUCT for the table
-                      const filteredTx = transactions.filter(t => {
-                        if (t.type !== 'OUT') return false;
-                        if (selectedCategoryMonth === 'ALL') return true;
-                        const txDate = new Date(t.date);
-                        const txMonth = txDate.toLocaleString('default', { month: 'short' });
-                        return txMonth === selectedCategoryMonth;
-                      });
-
-                      const productSalesMap = filteredTx.reduce((acc: Record<string, number>, curr) => {
-                        acc[curr.productId] = (acc[curr.productId] || 0) + curr.quantity;
-                        return acc;
-                      }, {});
-
-                      const totalSales = filteredTx.reduce((acc, curr) => acc + curr.quantity, 0);
-
-                      const productSalesData = Object.keys(productSalesMap).map(pid => {
-                        const product = products.find(p => String(p.id) === String(pid));
-                        return {
-                          product,
-                          sales: productSalesMap[pid]
-                        };
-                      })
-                        .filter(item => item.product) // Ensure product exists
-                        .sort((a, b) => b.sales - a.sales);
-
-                      if (productSalesData.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={4} className="px-6 py-4 text-center text-slate-400">No transactions found for this period.</td>
-                          </tr>
-                        );
-                      }
-
-                      return productSalesData.map((item, index) => {
-                        const percentage = totalSales > 0 ? ((item.sales / totalSales) * 100).toFixed(1) : '0';
+                    {detailedProductSalesData.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-4 text-center text-slate-400">No transactions found for this period.</td>
+                      </tr>
+                    ) : (
+                      detailedProductSalesData.map((item, index) => {
+                        const percentage = detailedTotalSales > 0 ? ((item.sales / detailedTotalSales) * 100).toFixed(1) : '0';
                         const skuPrefix = item.product?.sku ? item.product.sku.split('-')[0].trim() : '-';
 
                         return (
@@ -621,8 +643,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, toggleTheme })
                             <td className="px-6 py-3 text-right text-slate-500 dark:text-slate-400">{percentage}%</td>
                           </tr>
                         );
-                      });
-                    })()}
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

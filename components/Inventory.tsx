@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { Product } from '../types';
 import { ArrowUpRight, ArrowDownLeft, Calendar, Search, Download, Box, TrendingUp, TrendingDown, Plus, X, Save, CheckCircle, Truck, Globe, Store, ChevronDown, Lock, Unlock, Edit2, AlertCircle } from 'lucide-react';
@@ -156,32 +156,49 @@ export const Inventory: React.FC = () => {
     const [formData, setFormData] = useState(initialFormState);
 
     // Derived Calculations
-    const filteredTransactions = transactions.filter(t => {
-        const matchesTab = activeTab === 'ALL' || t.type === activeTab;
-        const matchesSearch = t.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (t.supplier && t.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
+    const filteredTransactions = useMemo(() => {
+        const lowerSearch = searchTerm.toLowerCase();
+        return transactions.filter(t => {
+            const matchesTab = activeTab === 'ALL' || t.type === activeTab;
+            const matchesSearch = t.productName.toLowerCase().includes(lowerSearch) ||
+                (t.notes && t.notes.toLowerCase().includes(lowerSearch)) ||
+                (t.supplier && t.supplier.toLowerCase().includes(lowerSearch));
 
-        // Date Range Logic
-        const matchesStartDate = startDate ? t.date >= startDate : true;
-        const matchesEndDate = endDate ? t.date <= endDate : true;
+            // Date Range Logic
+            const matchesStartDate = startDate ? t.date >= startDate : true;
+            const matchesEndDate = endDate ? t.date <= endDate : true;
 
-        return matchesTab && matchesSearch && matchesStartDate && matchesEndDate;
-    });
+            return matchesTab && matchesSearch && matchesStartDate && matchesEndDate;
+        });
+    }, [transactions, activeTab, searchTerm, startDate, endDate]);
 
     // Pagination Logic
-    const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    const currentTransactions = filteredTransactions.slice(startIndex, endIndex);
+    const { totalPages, startIndex, endIndex, currentTransactions } = useMemo(() => {
+        const total = Math.ceil(filteredTransactions.length / itemsPerPage);
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        return {
+            totalPages: total,
+            startIndex: start,
+            endIndex: end,
+            currentTransactions: filteredTransactions.slice(start, end)
+        };
+    }, [filteredTransactions, currentPage]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
     }, [activeTab, searchTerm, startDate, endDate]);
 
-    const totalInbound = transactions.filter(t => t.type === 'IN').reduce((acc, curr) => acc + Number(curr.totalValue), 0);
-    const totalOutbound = transactions.filter(t => t.type === 'OUT').reduce((acc, curr) => acc + Number(curr.totalValue), 0);
+    const { totalInbound, totalOutbound } = useMemo(() => {
+        let inTotal = 0;
+        let outTotal = 0;
+        transactions.forEach(t => {
+            if (t.type === 'IN') inTotal += Number(t.totalValue);
+            if (t.type === 'OUT') outTotal += Number(t.totalValue);
+        });
+        return { totalInbound: inTotal, totalOutbound: outTotal };
+    }, [transactions]);
 
     // Handlers
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {

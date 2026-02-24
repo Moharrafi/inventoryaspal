@@ -38,6 +38,9 @@ export const Reports: React.FC = () => {
 
     // Process Data for selected Year
     const monthlyData = React.useMemo(() => {
+        const productMap = new Map<string, Product>();
+        products.forEach(p => productMap.set(String(p.id), p));
+
         const months = [
             'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -64,7 +67,7 @@ export const Reports: React.FC = () => {
             let profit = 0;
 
             monthTransactions.forEach(t => {
-                const product = products.find(p => String(p.id) === String(t.productId));
+                const product = productMap.get(String(t.productId));
                 if (product) {
                     const qty = Number(t.quantity);
                     const price = Number(product.price);
@@ -85,13 +88,21 @@ export const Reports: React.FC = () => {
     }, [transactions, products, selectedYear]);
 
     // Aggregate Annual Stats
-    const totalRevenue = monthlyData.reduce((acc, curr) => acc + curr.revenue, 0);
-    const totalProfit = monthlyData.reduce((acc, curr) => acc + curr.profit, 0);
-    const totalCost = totalRevenue - totalProfit;
-    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const { totalRevenue, totalProfit, totalCost, avgMargin, maxProfitMonth } = React.useMemo(() => {
+        const rev = monthlyData.reduce((acc, curr) => acc + curr.revenue, 0);
+        const prof = monthlyData.reduce((acc, curr) => acc + curr.profit, 0);
+        const cost = rev - prof;
+        const margin = rev > 0 ? (prof / rev) * 100 : 0;
+        const maxProfit = [...monthlyData].sort((a, b) => b.profit - a.profit)[0];
 
-    // Find month with highest profit
-    const maxProfitMonth = [...monthlyData].sort((a, b) => b.profit - a.profit)[0];
+        return {
+            totalRevenue: rev,
+            totalProfit: prof,
+            totalCost: cost,
+            avgMargin: margin,
+            maxProfitMonth: maxProfit
+        };
+    }, [monthlyData]);
 
     const downloadReport = (type: 'FINANCIAL' | 'INVENTORY' | 'TRANSACTIONS', action: 'save' | 'print' = 'save') => {
         let title = "";
