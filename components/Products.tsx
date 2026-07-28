@@ -99,12 +99,12 @@ export const Products: React.FC = () => {
         return `${nameCode}-${catCode}-${random}`;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         try {
             // Basic validation
-            if (!formData.name || !formData.price) {
+            if (!formData.name || formData.price === undefined || formData.price === '') {
                 showNotification('Please fill in all required fields.', 'error');
                 return;
             }
@@ -120,34 +120,48 @@ export const Products: React.FC = () => {
 
             if (currentProduct) {
                 // Edit Mode
-                setProducts(prev => prev.map(p => p.id === currentProduct.id ? { ...submissionData, id: p.id, image: p.image } as Product : p));
+                await api.updateProduct(currentProduct.id, submissionData);
+                setProducts(prev => prev.map(p => p.id === currentProduct.id ? { ...p, ...submissionData } as Product : p));
                 showNotification('Product updated successfully!', 'success');
             } else {
                 // Add Mode - Generate SKU Automatically
-                const autoSku = generateSku(formData.name || '', formData.category || '');
+                const autoSku = formData.sku || generateSku(formData.name || '', formData.category || '');
 
-                const newProduct: Product = {
-                    ...submissionData as Product,
+                const newPayload = {
+                    ...submissionData,
                     sku: autoSku,
-                    id: `P${Math.floor(Math.random() * 10000).toString().padStart(3, '0')}`,
-                    image: 'https://picsum.photos/300/300?random=' + Math.floor(Math.random() * 1000) // Keep placeholder if needed by type, but unused in UI
+                    description: formData.description || ''
+                };
+                const res = await api.createProduct(newPayload);
+                const newProduct: Product = {
+                    ...newPayload as Product,
+                    id: res.id,
+                    status: newPayload.stock > 0 ? 'Active' : 'Out of Stock',
+                    image: 'https://placehold.co/100'
                 };
                 setProducts(prev => [newProduct, ...prev]);
                 showNotification('New product added successfully!', 'success');
             }
 
             setIsFormOpen(false);
-        } catch (error) {
-            showNotification('An error occurred while saving.', 'error');
+        } catch (error: any) {
+            console.error('Save product error:', error);
+            showNotification(error?.message || 'An error occurred while saving product.', 'error');
         }
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (currentProduct) {
-            setProducts(prev => prev.filter(p => p.id !== currentProduct.id));
-            setIsDeleteOpen(false);
-            setCurrentProduct(null);
-            showNotification('Product deleted successfully.', 'success');
+            try {
+                await api.deleteProduct(currentProduct.id);
+                setProducts(prev => prev.filter(p => p.id !== currentProduct.id));
+                setIsDeleteOpen(false);
+                setCurrentProduct(null);
+                showNotification('Product deleted successfully.', 'success');
+            } catch (error: any) {
+                console.error('Delete product error:', error);
+                showNotification(error?.message || 'Failed to delete product from database.', 'error');
+            }
         }
     };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { Product } from '../types';
-import { ArrowUpRight, ArrowDownLeft, Calendar, Search, Download, Box, TrendingUp, TrendingDown, Plus, X, Save, CheckCircle, Truck, Globe, Store, ChevronDown, Lock, Unlock, Edit2, AlertCircle } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Calendar, Search, Download, Box, TrendingUp, TrendingDown, Plus, X, Save, CheckCircle, Truck, Globe, Store, ChevronDown, Lock, Unlock, Edit2, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
 import { Transaction } from '../types';
 
 import { formatCurrency } from '../utils/format';
@@ -142,6 +142,11 @@ export const Inventory: React.FC = () => {
     const [passwordError, setPasswordError] = useState(false);
     const [editingTxId, setEditingTxId] = useState<string | number | null>(null);
 
+    // Delete Transaction State
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Initial form state extended with new fields
     const initialFormState = {
         type: 'IN' as 'IN' | 'OUT',
@@ -252,8 +257,7 @@ export const Inventory: React.FC = () => {
 
     const handleEdit = (tx: Transaction) => {
         setEditingTxId(tx.id);
-        const prod = products.find(p => p.name === tx.productName); // Find product to get ID (since simplified tx might not have productId if derived differently, but backend sends productId usually. Check backend response)
-        // Backend 'getTransactions' sends 'productId'.
+        const prod = products.find(p => p.name === tx.productName);
 
         setFormData({
             type: tx.type,
@@ -265,6 +269,28 @@ export const Inventory: React.FC = () => {
             channel: (tx.channel as any) || 'Online'
         });
         setIsModalOpen(true);
+    };
+
+    const handleDeleteClick = (tx: Transaction) => {
+        setDeletingTx(tx);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!deletingTx) return;
+        setIsDeleting(true);
+        try {
+            await api.deleteTransaction(deletingTx.id, deletingTx.type);
+            showNotification('Transaction deleted successfully', 'success');
+            setIsDeleteModalOpen(false);
+            setDeletingTx(null);
+            fetchData();
+        } catch (error) {
+            console.error('Failed to delete transaction:', error);
+            showNotification('Failed to delete transaction', 'error');
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const handleLockClick = () => {
@@ -522,13 +548,22 @@ export const Inventory: React.FC = () => {
                                     </td>
                                     {!isLocked && (
                                         <td className="px-6 py-4 text-center">
-                                            <button
-                                                onClick={() => handleEdit(tx)}
-                                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30"
-                                                title="Edit Transaction"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                    onClick={() => handleEdit(tx)}
+                                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                                                    title="Edit Transaction"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteClick(tx)}
+                                                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors dark:text-rose-400 dark:hover:bg-rose-900/30"
+                                                    title="Delete Transaction"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     )}
                                 </tr>
@@ -759,6 +794,42 @@ export const Inventory: React.FC = () => {
                                 Unlock Editing
                             </button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* --- DELETE TRANSACTION MODAL --- */}
+            {isDeleteModalOpen && deletingTx && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 dark:bg-slate-900 dark:border dark:border-slate-800">
+                        <div className="p-6 text-center">
+                            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 dark:bg-rose-900/30 dark:text-rose-500">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-900 mb-2 dark:text-white">Delete Transaction?</h3>
+                            <p className="text-sm text-slate-500 mb-6 dark:text-slate-400">
+                                Are you sure you want to delete transaction <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">#{deletingTx.id}</span> ({deletingTx.productName})? Stock quantity will be automatically adjusted.
+                            </p>
+                            <div className="flex gap-3 justify-center">
+                                <button
+                                    disabled={isDeleting}
+                                    onClick={() => {
+                                        setIsDeleteModalOpen(false);
+                                        setDeletingTx(null);
+                                    }}
+                                    className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors w-full dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    disabled={isDeleting}
+                                    onClick={confirmDelete}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors w-full disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isDeleting ? 'Deleting...' : 'Delete'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

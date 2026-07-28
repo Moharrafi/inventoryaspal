@@ -8,6 +8,31 @@ export const api = {
         if (!res.ok) throw new Error('Failed to fetch products');
         return res.json();
     },
+    createProduct: async (data: any): Promise<{ success: boolean; id: number }> => {
+        const res = await fetch(`${API_URL}/products`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error('Failed to create product');
+        return res.json();
+    },
+    updateProduct: async (id: number | string, data: any): Promise<{ success: boolean }> => {
+        const res = await fetch(`${API_URL}/products/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error('Failed to update product');
+        return res.json();
+    },
+    deleteProduct: async (id: number | string): Promise<{ success: boolean }> => {
+        const res = await fetch(`${API_URL}/products/${id}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Failed to delete product');
+        return res.json();
+    },
     getTransactions: async (): Promise<Transaction[]> => {
         const res = await fetch(`${API_URL}/transactions`);
         if (!res.ok) throw new Error('Failed to fetch transactions');
@@ -45,6 +70,13 @@ export const api = {
             body: JSON.stringify(data),
         });
         if (!res.ok) throw new Error('Failed to update transaction');
+        return res.json();
+    },
+    deleteTransaction: async (id: number | string, type: 'IN' | 'OUT'): Promise<{ success: boolean }> => {
+        const res = await fetch(`${API_URL}/transactions/${id}?type=${type}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Failed to delete transaction');
         return res.json();
     },
     login: async (email, password) => {

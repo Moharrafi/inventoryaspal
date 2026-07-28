@@ -1,8 +1,11 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
 const bcrypt = require('bcryptjs');
-require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -48,6 +51,47 @@ app.get('/api/products', async (req, res) => {
         `);
         res.json(rows);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/products', async (req, res) => {
+    try {
+        const { name, sku, category, price, stock, description } = req.body;
+        const [result] = await db.query(`
+            INSERT INTO inventory_products (name, sku, category, price, stock, description)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, [name, sku, category || 'Default', price || 0, stock || 0, description || '']);
+        res.json({ success: true, id: result.insertId });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, sku, category, price, stock, description } = req.body;
+        await db.query(`
+            UPDATE inventory_products 
+            SET name = ?, sku = ?, category = ?, price = ?, stock = ?, description = ?
+            WHERE id = ?
+        `, [name, sku, category, price, stock, description, id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM inventory_products WHERE id = ?', [id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -209,7 +253,46 @@ app.put('/api/transactions/:id', async (req, res) => {
     } finally {
         conn.release();
     }
-});// Sales Data Routes
+});
+
+// Delete Transaction Route
+app.delete('/api/transactions/:id', async (req, res) => {
+    const conn = await db.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const { id } = req.params;
+        const type = (req.query.type || 'IN').toString().toUpperCase();
+
+        const table = type === 'IN' ? 'stock_in' : 'stock_out';
+        const [rows] = await conn.query(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+        const tx = rows[0];
+
+        if (!tx) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'Transaction not found' });
+        }
+
+        // Revert stock effect: subtract if IN, add back if OUT
+        if (type === 'IN') {
+            await conn.query('UPDATE inventory_products SET stock = GREATEST(0, stock - ?) WHERE id = ?', [tx.quantity, tx.product_id]);
+        } else {
+            await conn.query('UPDATE inventory_products SET stock = stock + ? WHERE id = ?', [tx.quantity, tx.product_id]);
+        }
+
+        await conn.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
+
+        await conn.commit();
+        res.json({ success: true });
+    } catch (err) {
+        await conn.rollback();
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        conn.release();
+    }
+});
+
+// Sales Data Routes
 app.get('/api/sales', async (req, res) => {
     try {
         // Aggregate sales data by month from inventory_movements
